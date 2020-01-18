@@ -5,7 +5,7 @@
 
 ## 快速开始
 
-把依赖的 ![bitchat](https://github.com/all4you/bitchat) 项目也下载到本地，mvn install 安装到本地的 repository 仓库中
+把依赖的 [bitchat](https://github.com/all4you/bitchat) 项目也下载到本地，mvn install 安装到本地的 repository 仓库中
 
 ### 启动服务端
 
