@@ -7,6 +7,10 @@
 
 把依赖的 [bitchat](https://github.com/all4you/bitchat) 项目也下载到本地，mvn install 安装到本地的 repository 仓库中
 
+### 安装数据库
+
+可以通过 Docker 快速启用一个mysql数据库，然后创建数据库和相应的数据表，点击查看 [具体细节](bitchat-im-server/src/main/resources/sql/database.sql)
+
 ### 启动服务端
 
 要启动服务端，需要获取一个 Server 的实例，可以通过 ServerFactory 来获取。
