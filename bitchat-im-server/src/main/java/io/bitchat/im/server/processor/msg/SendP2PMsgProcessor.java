@@ -13,7 +13,6 @@ import io.bitchat.im.server.service.message.DefaultMessageWriter;
 import io.bitchat.im.server.service.message.MessageWriter;
 import io.bitchat.im.server.session.DefaultSessionIdKeeper;
 import io.bitchat.im.server.session.ImSession;
-import io.bitchat.im.server.session.ImSessionManager;
 import io.bitchat.lang.constants.ResultCode;
 import io.bitchat.packet.Command;
 import io.bitchat.packet.Packet;
@@ -27,7 +26,6 @@ import io.bitchat.server.SessionIdKeeper;
 import io.bitchat.server.channel.ChannelType;
 import io.bitchat.server.session.Session;
 import io.bitchat.server.session.SessionHelper;
-import io.bitchat.server.session.SessionManager;
 import io.bitchat.ws.Frame;
 import io.bitchat.ws.FrameFactory;
 import io.netty.channel.Channel;
@@ -46,13 +44,11 @@ import java.util.Map;
 public class SendP2PMsgProcessor extends AbstractRequestProcessor {
 
     private IdFactory idFactory;
-    private SessionManager sessionManager;
     private MessageWriter messageWriter;
     private SessionIdKeeper sessionIdKeeper;
 
     public SendP2PMsgProcessor() {
         this.idFactory = SnowflakeIdFactory.getInstance();
-        this.sessionManager = ImSessionManager.getInstance();
         this.messageWriter = DefaultMessageWriter.getInstance();
         this.sessionIdKeeper = DefaultSessionIdKeeper.getInstance();
     }
@@ -63,14 +59,13 @@ public class SendP2PMsgProcessor extends AbstractRequestProcessor {
         SendP2PMsgRequest request = BeanUtil.mapToBean(params, SendP2PMsgRequest.class, false);
 
         Channel fromChannel = ctx.channel();
-        String sessionId = SessionHelper.getSessionId(fromChannel);
-        ImSession session = (ImSession) sessionManager.getSession(sessionId);
+        ImSession session = (ImSession) SessionHelper.getSession(fromChannel);
         Long userId = session.userId();
         String userName = session.getUserName();
         Long partnerId = request.getPartnerId();
         ChannelType channelType = ChannelType.getChannelType(request.getChannelType() != null ? request.getChannelType() : 0);
         Long msgId = idFactory.nextId();
-        List<Session> partnerSessions = sessionManager.getSessionsByUserIdAndChannelType(partnerId, channelType);
+        List<Session> partnerSessions = SessionHelper.getSessionsByUserIdAndChannelType(partnerId, channelType);
         boolean success = true;
         // partner is not online
         if (CollectionUtil.isEmpty(partnerSessions)) {
