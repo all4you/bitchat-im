@@ -3,6 +3,7 @@ package io.bitchat.im.server.processor.msg;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.date.DateUtil;
+import com.alibaba.fastjson.JSON;
 import io.bitchat.core.id.IdFactory;
 import io.bitchat.core.id.SnowflakeIdFactory;
 import io.bitchat.im.ImServiceName;
@@ -13,21 +14,16 @@ import io.bitchat.im.server.service.message.DefaultMessageWriter;
 import io.bitchat.im.server.service.message.MessageWriter;
 import io.bitchat.im.server.session.DefaultSessionIdKeeper;
 import io.bitchat.im.server.session.ImSession;
+import io.bitchat.im.server.session.ImSessionManager;
 import io.bitchat.lang.constants.ResultCode;
-import io.bitchat.packet.Command;
-import io.bitchat.packet.Packet;
 import io.bitchat.packet.Payload;
-import io.bitchat.packet.factory.CommandFactory;
-import io.bitchat.packet.factory.PacketFactory;
 import io.bitchat.packet.factory.PayloadFactory;
 import io.bitchat.packet.processor.AbstractRequestProcessor;
 import io.bitchat.packet.processor.Processor;
 import io.bitchat.server.SessionIdKeeper;
 import io.bitchat.server.channel.ChannelType;
 import io.bitchat.server.session.Session;
-import io.bitchat.server.session.SessionHelper;
-import io.bitchat.ws.Frame;
-import io.bitchat.ws.FrameFactory;
+import io.bitchat.server.session.SessionFacade;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import lombok.extern.slf4j.Slf4j;
@@ -46,11 +42,13 @@ public class SendP2PMsgProcessor extends AbstractRequestProcessor {
     private IdFactory idFactory;
     private MessageWriter messageWriter;
     private SessionIdKeeper sessionIdKeeper;
+    private SessionFacade sessionFacade;
 
     public SendP2PMsgProcessor() {
         this.idFactory = SnowflakeIdFactory.getInstance();
         this.messageWriter = DefaultMessageWriter.getInstance();
         this.sessionIdKeeper = DefaultSessionIdKeeper.getInstance();
+        this.sessionFacade = new SessionFacade(ImSessionManager.getInstance());
     }
 
     @Override
@@ -59,13 +57,13 @@ public class SendP2PMsgProcessor extends AbstractRequestProcessor {
         SendP2PMsgRequest request = BeanUtil.mapToBean(params, SendP2PMsgRequest.class, false);
 
         Channel fromChannel = ctx.channel();
-        ImSession session = (ImSession) SessionHelper.getSession(fromChannel);
+        ImSession session = (ImSession) sessionFacade.getSession(fromChannel);
         Long userId = session.userId();
         String userName = session.getUserName();
         Long partnerId = request.getPartnerId();
         ChannelType channelType = ChannelType.getChannelType(request.getChannelType() != null ? request.getChannelType() : 0);
         Long msgId = idFactory.nextId();
-        List<Session> partnerSessions = SessionHelper.getSessionsByUserIdAndChannelType(partnerId, channelType);
+        List<Session> partnerSessions = sessionFacade.getSessionsByUserIdAndChannelType(partnerId, channelType);
         boolean success = true;
         // partner is not online
         if (CollectionUtil.isEmpty(partnerSessions)) {
@@ -73,15 +71,15 @@ public class SendP2PMsgProcessor extends AbstractRequestProcessor {
             // save offline msg for partner
             saveOfflineMsg(userId, request, msgId);
         } else {
+            Map<String, Object> content = new HashMap<>();
+            content.put("partnerId", userId);
+            content.put("partnerName", userName);
+            content.put("messageType", request.getMessageType());
+            content.put("msg", request.getMsg());
+            String contentJson = JSON.toJSONString(content);
             // transfer the msg to all partner endpoints
             for (Session partnerSession : partnerSessions) {
-                Object transferMsg;
-                if (partnerSession.channelType() == ChannelType.Packet) {
-                    transferMsg = buildTransferMsgPacket(userId, userName, request);
-                } else {
-                    transferMsg = buildTransferMsgFrame(userId, userName, request);
-                }
-                partnerSession.writeAndFlush(transferMsg);
+                sessionFacade.push(partnerSession, ImServiceName.TRANSFER_MSG, contentJson);
             }
         }
         Payload payload = success ?
@@ -116,33 +114,6 @@ public class SendP2PMsgProcessor extends AbstractRequestProcessor {
         p2pMessage.setPartnerId(partnerId);
         p2pMessage.setMsg(request.getMsg());
         return p2pMessage;
-    }
-
-    /**
-     * build transfer msg packet
-     */
-    private Packet buildTransferMsgPacket(Long userId, String userName, SendP2PMsgRequest request) {
-        Map<String, Object> params = new HashMap<>();
-        params.put("partnerId", userId);
-        params.put("partnerName", userName);
-        params.put("messageType", request.getMessageType());
-        params.put("msg", request.getMsg());
-        Command transferMsgCommand = CommandFactory.newCommand(ImServiceName.TRANSFER_MSG, params);
-        // create a new command packet
-        return PacketFactory.newCmdPacket(transferMsgCommand);
-    }
-
-    /**
-     * build transfer msg frame
-     */
-    private Frame buildTransferMsgFrame(Long userId, String userName, SendP2PMsgRequest request) {
-        Map<String, Object> params = new HashMap<>();
-        params.put("partnerId", userId);
-        params.put("partnerName", userName);
-        params.put("messageType", request.getMessageType());
-        params.put("msg", request.getMsg());
-        // create a new command frame
-        return FrameFactory.newCmdFrame(ImServiceName.TRANSFER_MSG, params);
     }
 
 }
